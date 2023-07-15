@@ -71,7 +71,7 @@ async function checkForChanges() {
     + Тел: [+${newResponse[0].ClientPhone}](tel:+${newResponse[0].ClientPhone})
     `;
 
-  if(newResponse.length === 0) {
+  if(lastResponse.length === 0) {
     if([...newResponse.filter((e)=> e.Status === 12)].length !== 0) {
         sendMessage(chatId, newOrder);
         lastResponse = newResponse;
