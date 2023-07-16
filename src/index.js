@@ -59,13 +59,13 @@ function GetUserTime(t) {
 async function checkForChanges() {
   makeBackendRequest().then((newResponse) => {
 
-    const markerColor = 'org'; // Цвет маркера (org - оранжевый)
-    const markerSize = 'pm2'; // Размер маркера (pm2 - маленький) 
-    const mapLink = `https://yandex.com/maps/?ll=${newResponse[0].Longitude},${newResponse[0].Latitude}&z=12&pt=${newResponse[0].Longitude},${newResponse[0].Latitude},${markerColor}${markerSize}`;
+    //const markerColor = 'org'; // Цвет маркера (org - оранжевый)
+    //const markerSize = 'pm2'; // Размер маркера (pm2 - маленький) 
+    //const mapLink = `https://yandex.com/maps/?ll=${newResponse[0].Longitude},${newResponse[0].Latitude}&z=12&pt=${newResponse[0].Longitude},${newResponse[0].Latitude},${markerColor}${markerSize}`;
 
     const newOrder = `
     Заказ #${newResponse[0].DeliveryNumber}
-    + Адрес: [${newResponse[0].Address}](${mapLink})
+    + Адрес: ${newResponse[0].Address}
     + Желаемое время: ${GetUserTime(new Date(newResponse[0].WishingDate))} 
     + Ближайшее: ${newResponse[0].Nearest? 'Да' : 'Нет' }
     + Тел: [+${newResponse[0].ClientPhone}](tel:+${newResponse[0].ClientPhone})
