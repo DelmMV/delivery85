@@ -57,7 +57,14 @@ function GetUserTime(t) {
 
 // Функция для сравнения ответа от бэкенда и отправки изменений в Telegram
 async function checkForChanges() {
+  if(GetUserTime(new Date()) > '08:00' && GetUserTime(new Date()) < '22:00') {
+
   makeBackendRequest().then((newResponse) => {
+    if(newResponse.length === 0) {
+      console.log(`Not equal to 0 ${GetUserTime(new Date())}`)
+      return 
+    }
+    console.log(`Not equal to 0 || ${GetUserTime(new Date())}`)
 
     //const markerColor = 'org'; // Цвет маркера (org - оранжевый)
     //const markerSize = 'pm2'; // Размер маркера (pm2 - маленький) 
@@ -86,7 +93,12 @@ async function checkForChanges() {
   } else {
     console.log(`${newResponse.length} ${lastResponse.length} false`);
   }
-  })}
+  })} else {
+    lastResponse = [];
+    console.log('Еще не время')
+    return
+  }
+}
   
 // Запуск проверки изменений каждую минуту
 setInterval(checkForChanges, 30000);
