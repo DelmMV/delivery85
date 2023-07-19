@@ -1,37 +1,17 @@
-const { Telegraf } = require('telegraf');
-const axios = require('axios');
-require('dotenv').config()
+const { Telegraf } = require("telegraf");
+const axios = require("axios");
+require("dotenv").config();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const chatId = '-1001896856591';
+const chatId = "-1001896856591";
 const config = {
-    method: "GET",
-    headers: {
-    "content-type": "application/json",
-    token: process.env.BACKEND_TOKEN
-    }
-  };
-
-let lastResponse = [];
-
-// Функция для отправки сообщения в Telegram
-function sendMessage(chatId, message) {
-  bot.telegram.sendMessage(chatId, message, {parse_mode: 'Markdown'})
-    .catch((error) => console.log('Ошибка при отправке сообщения:', error));
-}
-
-// Функция для выполнения запроса к бэкенду
-async function makeBackendRequest() {
-  try {
-    const response = await axios.get(process.env.BACKEND_URL_ORDERS, config);
-    return response.data;
-  } catch (error) {
-    console.log('Ошибка при выполнении запроса к бэкенду:', error);
-    return null;
-  }
-}
- const days = [
-  "Воскресенья",
+  headers: {
+    "Content-Type": "application/json",
+    "token": process.env.BACKEND_TOKEN,
+  },
+};
+const days = [
+  "Воскресенье",
   "Понедельник",
   "Вторник",
   "Среда",
@@ -40,11 +20,13 @@ async function makeBackendRequest() {
   "Суббота",
 ];
 
+let lastResponse = [];
+
 function addLeadingZero(d) {
   return d < 10 ? "0" + d : d;
 }
 
-function GetUserTime(t) {
+function getUserTime(t) {
   let tr = t - 840 * 60;
   let Y = t.getFullYear();
   let M = addLeadingZero(t.getMonth() + 1);
@@ -55,55 +37,74 @@ function GetUserTime(t) {
   return `${h}:${m}`;
 }
 
-// Функция для сравнения ответа от бэкенда и отправки изменений в Telegram
-async function checkForChanges() {
-  if(GetUserTime(new Date()) > '08:00' && GetUserTime(new Date()) < '22:00') {
-
-  makeBackendRequest().then((newResponse) => {
-    if(newResponse.length === 0) {
-      console.log(`Not equal to 0 ${GetUserTime(new Date())}`)
-      return 
-    }
-    console.log(`Not equal to 0 || ${GetUserTime(new Date())}`)
-
-    //const markerColor = 'org'; // Цвет маркера (org - оранжевый)
-    //const markerSize = 'pm2'; // Размер маркера (pm2 - маленький) 
-    //const mapLink = `https://yandex.com/maps/?ll=${newResponse[0].Longitude},${newResponse[0].Latitude}&z=12&pt=${newResponse[0].Longitude},${newResponse[0].Latitude},${markerColor}${markerSize}`;
-
-    const newOrder = `
-    Заказ #${newResponse[0].DeliveryNumber}
-    + Адрес: ${newResponse[0].Address}
-    + Желаемое время: ${GetUserTime(new Date(newResponse[0].WishingDate))} 
-    + Ближайшее: ${newResponse[0].Nearest? 'Да' : 'Нет' }
-    + Тел: [+${newResponse[0].ClientPhone}](tel:+${newResponse[0].ClientPhone})
-    `;
-
-  if(lastResponse.length === 0) {
-    if([...newResponse.filter((e)=> e.Status === 12)].length !== 0) {
-        sendMessage(chatId, newOrder);
-        lastResponse = newResponse;
-        console.log("Обновляем счетчик в ифе");
-    }
-    lastResponse = newResponse;
-    console.log(`Обновляем счетчик ${lastResponse.length}`);
-  } else if (newResponse.length > lastResponse.length) {
-    console.log(`${newResponse.length} ${lastResponse.length} true`);
-    sendMessage(chatId, newOrder);
-    lastResponse = newResponse;
-  } else {
-    console.log(`${newResponse.length} ${lastResponse.length} false`);
-  }
-  })} else {
-    lastResponse = [];
-    console.log('Еще не время')
-    return
+async function sendMessage(chatId, message) {
+  try {
+    await bot.telegram.sendMessage(chatId, message, { parse_mode: "Markdown" });
+  } catch (error) {
+    console.log("Ошибка при отправке сообщения:", error);
   }
 }
-  
-// Запуск проверки изменений каждую минуту
+
+async function makeBackendRequest() {
+  try {
+    const response = await axios.get(process.env.BACKEND_URL_ORDERS, config);
+    return response.data;
+  } catch (error) {
+    console.log("Ошибка при выполнении запроса к бэкенду:", error);
+    return null;
+  }
+}
+
+// Функция для сравнения ответа от бэкенда и отправки изменений в Telegram
+async function checkForChanges() {
+  const currentTime = getUserTime(new Date());
+
+  if (currentTime > "08:00" && currentTime < "22:00") {
+    try {
+      const newResponse = await makeBackendRequest();
+
+      if (!newResponse || newResponse.length === 0) {
+        console.log(`Equal to 0 ${currentTime}`);
+        return;
+      }
+
+      console.log(`Not equal to 0 || ${currentTime}`);
+
+      const newOrder = `
+        Заказ #${newResponse[0].DeliveryNumber}
+        + Адрес: ${newResponse[0].Address}
+        + Желаемое время: ${getUserTime(new Date(newResponse[0].WishingDate))} 
+        + Ближайшее: ${newResponse[0].Nearest ? "Да" : "Нет"}
+        + Тел: [+${newResponse[0].ClientPhone}](tel:+${newResponse[0].ClientPhone})
+      `;
+
+      if (lastResponse.length === 0) {
+        if (newResponse.some((e) => e.Status === 12)) {
+          await sendMessage(chatId, newOrder);
+          lastResponse = newResponse;
+          console.log("Обновляем счетчик в if");
+        }
+        lastResponse = newResponse;
+        console.log(`Обновляем счетчик ${lastResponse.length}`);
+      } else if (newResponse.length > lastResponse.length) {
+        console.log(`${newResponse.length} ${lastResponse.length} true`);
+        await sendMessage(chatId, newOrder);
+        lastResponse = newResponse;
+      } else {
+        console.log(`${newResponse.length} ${lastResponse.length} false`);
+      }
+    } catch (error) {
+      console.log("Ошибка при проверке изменений:", error);
+    }
+  } else {
+    lastResponse = [];
+    console.log("Еще не время");
+  }
+}
+
 setInterval(checkForChanges, 30000);
 
-// Запуск телеграм-бота
-bot.launch()
-  .then(() => console.log('Телеграм-бот запущен.'))
-  .catch((error) => console.log('Ошибка при запуске телеграм-бота:', error));
+bot
+  .launch()
+  .then(() => console.log("Телеграм-бот запущен."))
+  .catch((error) => console.log("Ошибка при запуске телеграм-бота:", error));
