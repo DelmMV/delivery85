@@ -1,110 +1,150 @@
-const { Telegraf } = require("telegraf");
+const { Telegraf, Markup } = require("telegraf");
 const axios = require("axios");
 require("dotenv").config();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const chatId = "-1001896856591";
-const config = {
-  headers: {
-    "Content-Type": "application/json",
-    "token": process.env.BACKEND_TOKEN,
-  },
-};
-const days = [
-  "Воскресенье",
-  "Понедельник",
-  "Вторник",
-  "Среда",
-  "Четверг",
-  "Пятница",
-  "Суббота",
-];
+const backendUrl = process.env.BACKEND_URL_ORDERS;
+const backendToken = process.env.BACKEND_TOKEN;
+const chatUpdatesInterval = 25000; // 25 seconds
 
-let lastResponse = [];
-
-function addLeadingZero(d) {
-  return d < 10 ? "0" + d : d;
+function addLeadingZero(num) {
+  return num < 10 ? "0" + num : num;
 }
 
-function getUserTime(t) {
-  let tr = t - 840 * 60;
-  let Y = t.getFullYear();
-  let M = addLeadingZero(t.getMonth() + 1);
-  let D = addLeadingZero(t.getDate());
-  let d = days[t.getDay()];
-  let h = addLeadingZero(t.getHours());
-  let m = addLeadingZero(t.getMinutes());
+function getUserTime(date) {
+  let t = date.getTime() - 840 * 60 * 1000;
+  let h = addLeadingZero(date.getHours());
+  let m = addLeadingZero(date.getMinutes());
   return `${h}:${m}`;
 }
 
 async function sendMessage(chatId, message) {
   try {
-    await bot.telegram.sendMessage(chatId, message, { parse_mode: "Markdown" });
+    await bot.telegram.sendMessage(chatId, message, {
+      parse_mode: "Markdown",
+    });
   } catch (error) {
-    console.log("Ошибка при отправке сообщения:", error);
+    console.log("Error sending message:", error);
   }
 }
 
 async function makeBackendRequest() {
   try {
-    const response = await axios.get(process.env.BACKEND_URL_ORDERS, config);
+    const config = {
+      headers: {
+        "Content-Type": "application/json",
+        token: backendToken,
+      },
+    };
+    const response = await axios.get(backendUrl, config);
     return response.data;
   } catch (error) {
-    console.log("Ошибка при выполнении запроса к бэкенду:", error);
+    console.log("Error making backend request:", error);
     return null;
   }
 }
 
-// Функция для сравнения ответа от бэкенда и отправки изменений в Telegram
-async function checkForChanges() {
-  const currentTime = getUserTime(new Date());
+const chatsData = {};
 
-  if (currentTime > "08:00" && currentTime < "22:00") {
+function startCheckingForChanges(chatId) {
+  return setInterval(async () => {
+    const currentTime = new Date();
+    const currentHour = currentTime.getUTCHours();
+
+    if (currentHour > 8 || currentHour < 22) {
+      return;
+    }
+
     try {
       const newResponse = await makeBackendRequest();
 
       if (!newResponse || newResponse.length === 0) {
-        console.log(`Equal to 0 ${currentTime}`);
+        console.log(`Equal to 0 ${getUserTime(currentTime)}`);
         return;
       }
 
-      console.log(`Not equal to 0 || ${currentTime}`);
+      console.log(`Not equal to 0 || ${getUserTime(currentTime)}`);
 
-      const newOrder = `
-        Заказ #${newResponse[0].DeliveryNumber}
-        + Адрес: ${newResponse[0].Address}
-        + Желаемое время: ${getUserTime(new Date(newResponse[0].WishingDate))} 
-        + Ближайшее: ${newResponse[0].Nearest ? "Да" : "Нет"}
-        + Тел: [+${newResponse[0].ClientPhone}](tel:+${newResponse[0].ClientPhone})
-      `;
+      const processedOrderIds = chatsData[chatId] || new Set();
+      const newOrders = newResponse.filter(order => order.Status === 12 && !processedOrderIds.has(order.DeliveryNumber));
 
-      if (lastResponse.length === 0) {
-        if (newResponse.some((e) => e.Status === 12)) {
-          await sendMessage(chatId, newOrder);
-          lastResponse = newResponse;
-          console.log("Обновляем счетчик в if");
+      if (newOrders.length > 0) {
+        for (const newOrder of newOrders) {
+          const message = `
+          Заказ #${newOrder.DeliveryNumber}
+          + Адрес: ${newOrder.Address}
+          + Желаемое время: ${getUserTime(new Date(newOrder.WishingDate))} 
+          + Ближайшее: ${newOrder.Nearest ? "Да" : "Нет"}
+          + Тел: [+${newOrder.ClientPhone}](tel:+${newOrder.ClientPhone})
+        `;
+          await sendMessage(chatId, message);
+          processedOrderIds.add(newOrder.DeliveryNumber);
         }
-        lastResponse = newResponse;
-        console.log(`Обновляем счетчик ${lastResponse.length}`);
-      } else if (newResponse.length > lastResponse.length) {
-        console.log(`${newResponse.length} ${lastResponse.length} true`);
-        await sendMessage(chatId, newOrder);
-        lastResponse = newResponse;
-      } else {
-        console.log(`${newResponse.length} ${lastResponse.length} false`);
       }
+
+      chatsData[chatId] = processedOrderIds;
     } catch (error) {
-      console.log("Ошибка при проверке изменений:", error);
+      console.log("Error checking for changes:", error);
     }
-  } else {
-    lastResponse = [];
-    console.log("Еще не время");
-  }
+  }, chatUpdatesInterval);
 }
 
-setInterval(checkForChanges, 30000);
+bot.command("start", (ctx) => {
+  const chatId = ctx.message.chat.id;
+  if (!chatsData[chatId]) {
+    chatsData[chatId] = new Set();
+    const intervalId = startCheckingForChanges(chatId);
+    chatsData[chatId].intervalId = intervalId;
 
-bot
-  .launch()
-  .then(() => console.log("Телеграм-бот запущен."))
-  .catch((error) => console.log("Ошибка при запуске телеграм-бота:", error));
+    // Create a custom keyboard with the "Turn Off Bot" button
+    const replyMarkup = Markup.keyboard([Markup.button.text("Выключить уведомления")]).resize();
+    
+    ctx.reply("Уведомления в чате активированы.", replyMarkup);
+  } else {
+    ctx.reply("Уведомления уже активны в этом чате.");
+  }
+});
+
+bot.hears("Выключить уведомления", async (ctx) => {
+  const chatId = ctx.message.chat.id;
+  if (chatsData[chatId]) {
+    console.log("Bot is stopping...");
+    const intervalId = chatsData[chatId].intervalId;
+    if (intervalId) {
+      clearInterval(intervalId);
+      delete chatsData[chatId].intervalId;
+    }
+    delete chatsData[chatId];
+
+    // Create a custom keyboard with the "Turn On Bot" button
+    const replyMarkup = Markup.keyboard([Markup.button.text("Включить уведомления")]).resize();
+
+    ctx.reply("Уведомления в чате деактивированы.", replyMarkup);
+  } else {
+    ctx.reply("Уведомления уже отлючены в этом чате.");
+  }
+});
+
+bot.hears("Включить уведомления", (ctx) => {
+  const chatId = ctx.message.chat.id;
+  if (!chatsData[chatId]) {
+    chatsData[chatId] = new Set();
+    const intervalId = startCheckingForChanges(chatId);
+    chatsData[chatId].intervalId = intervalId;
+
+    // Create a custom keyboard with the "Turn Off Bot" button
+    const replyMarkup = Markup.keyboard([Markup.button.text("Выключить уведомления")]).resize();
+
+    ctx.reply("Уведомления в чате активированы.", replyMarkup);
+  } else {
+    ctx.reply("Уведомления уже активны в этом чате.");
+  }
+});
+
+bot.launch()
+  .then(() => {
+    console.log("Telegram bot is running.");
+  })
+  .catch((error) => {
+    console.log("Error launching the Telegram bot:", error);
+  });
