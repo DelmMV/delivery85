@@ -3,7 +3,8 @@ const axios = require("axios");
 require("dotenv").config();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const backendUrl = process.env.BACKEND_URL_ORDERS;
+const backendUrl = process.env.BACKEND_URL;
+const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
 const backendToken = process.env.BACKEND_TOKEN;
 const chatUpdatesInterval = 25000; // 25 seconds
 
@@ -15,13 +16,15 @@ function getUserTime(date) {
   let t = date.getTime() - 840 * 60 * 1000;
   let h = addLeadingZero(date.getHours());
   let m = addLeadingZero(date.getMinutes());
+  let month = addLeadingZero(date.getMonth());
   return `${h}:${m}`;
 }
 
 async function sendMessage(chatId, message) {
   try {
     await bot.telegram.sendMessage(chatId, message, {
-      parse_mode: "Markdown",
+      parse_mode: "HTML",
+      disable_web_page_preview: false,
     });
   } catch (error) {
     console.log("Error sending message:", error);
@@ -44,6 +47,37 @@ async function makeBackendRequest() {
   }
 }
 
+async function makeBackendRequestForOrder(id) {
+  try {
+    const config = {
+      headers: {
+        "Content-Type": "application/json",
+        token: backendToken,
+      },
+    };
+    let fullbackendUrlOrder = `${backendUrlOrders}${id}`;
+    const response = await axios.get(fullbackendUrlOrder, config);
+    return response.data;
+  } catch (error) {
+    console.log("Error making backend request:", error);
+    return null;
+  }
+}
+
+function parseData(data) {
+  let parsedText = '<b>Состав заказа:</b>\n\n';
+
+  data.forEach((item, index) => {
+    parsedText += `<b>+ ${item.ProductName}</b>\n`;
+
+    if (item.Quantity > 1) {
+      parsedText += `<b>Количество:</b> ${item.Quantity}\n`;
+    }
+  });
+
+  return parsedText;
+}
+
 const chatsData = {};
 
 function startCheckingForChanges(chatId) {
@@ -51,9 +85,9 @@ function startCheckingForChanges(chatId) {
     const currentTime = new Date();
     const currentHour = currentTime.getUTCHours();
 
-    if (currentHour > 8 || currentHour < 22) {
-      return;
-    }
+//     if (currentHour < 22) {
+// return
+//     }
 
     try {
       const newResponse = await makeBackendRequest();
@@ -70,13 +104,16 @@ function startCheckingForChanges(chatId) {
 
       if (newOrders.length > 0) {
         for (const newOrder of newOrders) {
+          const newResponseOrder = await makeBackendRequestForOrder(newOrder.OrderId);
+          let parsedData = parseData(newResponseOrder);
           const message = `
-          Заказ #${newOrder.DeliveryNumber}
-          + Адрес: ${newOrder.Address}
-          + Желаемое время: ${getUserTime(new Date(newOrder.WishingDate))} 
-          + Ближайшее: ${newOrder.Nearest ? "Да" : "Нет"}
-          + Тел: [+${newOrder.ClientPhone}](tel:+${newOrder.ClientPhone})
-        `;
+            <b>Заказ #${newOrder.DeliveryNumber}</b>\n
+            <b>+ Адрес: </b> ${newOrder.Address}\n
+            <b>+ Желаемое время: </b> ${getUserTime(new Date(newOrder.WishingDate))}\n
+            <b>+ Ближайшее: </b> ${newOrder.Nearest ? "Да" : "Нет"}\n
+            <b>+ Тел: </b> <a href="tel:+${newOrder.ClientPhone}">+${newOrder.ClientPhone}</a>\n
+            <pre>${parsedData}</pre>
+          `;
           await sendMessage(chatId, message);
           processedOrderIds.add(newOrder.DeliveryNumber);
         }
@@ -98,7 +135,7 @@ bot.command("start", (ctx) => {
 
     // Create a custom keyboard with the "Turn Off Bot" button
     const replyMarkup = Markup.keyboard([Markup.button.text("Выключить уведомления")]).resize();
-    
+
     ctx.reply("Уведомления в чате активированы.", replyMarkup);
   } else {
     ctx.reply("Уведомления уже активны в этом чате.");
