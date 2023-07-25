@@ -102,7 +102,7 @@ function startCheckingForChanges(chatId) {
       const processedOrderIds = chatsData[chatId] || new Set();
       const newOrders = newResponse.filter(
         (order) =>
-          order.Status === 7 && !processedOrderIds.has(order.DeliveryNumber)
+          order.Status === 12 && !processedOrderIds.has(order.DeliveryNumber)
       );
 
       if (newOrders.length > 0) {
