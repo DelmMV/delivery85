@@ -24,7 +24,7 @@ async function sendMessage(chatId, message) {
   try {
     await bot.telegram.sendMessage(chatId, message, {
       parse_mode: "HTML",
-      disable_web_page_preview: false,
+      disable_web_page_preview: true,
     });
   } catch (error) {
     console.log("Error sending message:", error);
@@ -65,7 +65,7 @@ async function makeBackendRequestForOrder(id) {
 }
 
 function parseData(data) {
-  let parsedText = '<b>Состав заказа:</b>\n\n';
+  let parsedText = "<b>Состав заказа:</b>\n\n";
 
   data.forEach((item, index) => {
     parsedText += `<b>+ ${item.ProductName}</b>\n`;
@@ -85,9 +85,9 @@ function startCheckingForChanges(chatId) {
     const currentTime = new Date();
     const currentHour = currentTime.getUTCHours();
 
-//     if (currentHour < 22) {
-// return
-//     }
+    //     if (currentHour < 22) {
+    // return
+    //     }
 
     try {
       const newResponse = await makeBackendRequest();
@@ -100,18 +100,30 @@ function startCheckingForChanges(chatId) {
       console.log(`Not equal to 0 || ${getUserTime(currentTime)}`);
 
       const processedOrderIds = chatsData[chatId] || new Set();
-      const newOrders = newResponse.filter(order => order.Status === 12 && !processedOrderIds.has(order.DeliveryNumber));
+      const newOrders = newResponse.filter(
+        (order) =>
+          order.Status === 7 && !processedOrderIds.has(order.DeliveryNumber)
+      );
 
       if (newOrders.length > 0) {
         for (const newOrder of newOrders) {
-          const newResponseOrder = await makeBackendRequestForOrder(newOrder.OrderId);
+          const newResponseOrder = await makeBackendRequestForOrder(
+            newOrder.OrderId
+          );
+          const markerColor = "org"; // Цвет маркера (org - оранжевый)
+          const markerSize = "pm2"; // Размер маркера (pm2 - маленький)
+          const mapLink = `https://yandex.com/maps/?ll=${newOrder.Longitude},${newOrder.Latitude}&z=12&pt=${newOrder.Longitude},${newOrder.Latitude},${markerColor}${markerSize}`;
           let parsedData = parseData(newResponseOrder);
           const message = `
             <b>Заказ #${newOrder.DeliveryNumber}</b>\n
-            <b>+ Адрес: </b> ${newOrder.Address}\n
-            <b>+ Желаемое время: </b> ${getUserTime(new Date(newOrder.WishingDate))}\n
+            <b>+ Адрес: </b> <a href="${mapLink}">${newOrder.Address}</a>\n
+            <b>+ Желаемое время: </b> ${getUserTime(
+              new Date(newOrder.WishingDate)
+            )}\n
             <b>+ Ближайшее: </b> ${newOrder.Nearest ? "Да" : "Нет"}\n
-            <b>+ Тел: </b> <a href="tel:+${newOrder.ClientPhone}">+${newOrder.ClientPhone}</a>\n
+            <b>+ Тел: </b> <a href="tel:+${newOrder.ClientPhone}">+${
+            newOrder.ClientPhone
+          }</a>\n
             <pre>${parsedData}</pre>
           `;
           await sendMessage(chatId, message);
@@ -134,7 +146,9 @@ bot.command("start", (ctx) => {
     chatsData[chatId].intervalId = intervalId;
 
     // Create a custom keyboard with the "Turn Off Bot" button
-    const replyMarkup = Markup.keyboard([Markup.button.text("Выключить уведомления")]).resize();
+    const replyMarkup = Markup.keyboard([
+      Markup.button.text("Выключить уведомления"),
+    ]).resize();
 
     ctx.reply("Уведомления в чате активированы.", replyMarkup);
   } else {
@@ -154,7 +168,9 @@ bot.hears("Выключить уведомления", async (ctx) => {
     delete chatsData[chatId];
 
     // Create a custom keyboard with the "Turn On Bot" button
-    const replyMarkup = Markup.keyboard([Markup.button.text("Включить уведомления")]).resize();
+    const replyMarkup = Markup.keyboard([
+      Markup.button.text("Включить уведомления"),
+    ]).resize();
 
     ctx.reply("Уведомления в чате деактивированы.", replyMarkup);
   } else {
@@ -170,7 +186,9 @@ bot.hears("Включить уведомления", (ctx) => {
     chatsData[chatId].intervalId = intervalId;
 
     // Create a custom keyboard with the "Turn Off Bot" button
-    const replyMarkup = Markup.keyboard([Markup.button.text("Выключить уведомления")]).resize();
+    const replyMarkup = Markup.keyboard([
+      Markup.button.text("Выключить уведомления"),
+    ]).resize();
 
     ctx.reply("Уведомления в чате активированы.", replyMarkup);
   } else {
@@ -178,7 +196,8 @@ bot.hears("Включить уведомления", (ctx) => {
   }
 });
 
-bot.launch()
+bot
+  .launch()
   .then(() => {
     console.log("Telegram bot is running.");
   })
