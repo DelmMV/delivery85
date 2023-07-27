@@ -94,18 +94,10 @@ const chatsData = {};
 
 function startCheckingForChanges(chatId) {
   return setInterval(async () => {
-    console.log(isTimeToTurnOffNotifications())
     if (isTimeToTurnOffNotifications()) {
       clearInterval(chatsData[chatId].intervalId);
       delete chatsData[chatId].intervalId;
-
-      // Create a custom keyboard with the "Turn On Bot" button
-      const replyMarkup = Markup.keyboard([
-        Markup.button.text("Включить уведомления"),
-      ]).resize();
-
-      await sendMessage(chatId, "Уведомления в чате деактивированы.", replyMarkup);
-
+      await sendMessage(chatId, "Уведомления в чате деактивированы.");
       return; // Stop further execution of the interval
     }
   
@@ -132,7 +124,6 @@ function startCheckingForChanges(chatId) {
           const newResponseOrder = await makeBackendRequestForOrder(
             newOrder.OrderId
           );
-          console.log(JSON.stringify(newResponseOrder))
 
           const markerColor = "org"; // Цвет маркера (org - оранжевый)
           const markerSize = "pm2"; // Размер маркера (pm2 - маленький)
@@ -168,19 +159,13 @@ bot.command("start", (ctx) => {
     chatsData[chatId] = new Set();
     const intervalId = startCheckingForChanges(chatId);
     chatsData[chatId].intervalId = intervalId;
-
-    // Create a custom keyboard with the "Turn Off Bot" button
-    const replyMarkup = Markup.keyboard([
-      Markup.button.text("Выключить уведомления"),
-    ]).resize();
-
-    ctx.reply("Уведомления активированы.", replyMarkup);
+    ctx.reply("Уведомления активированы.");
   } else {
     ctx.reply("Уведомления уже активны.");
   }
 });
 
-bot.hears("Выключить уведомления", async (ctx) => {
+bot.command("off", async (ctx) => {
   const chatId = ctx.message.chat.id;
   if (chatsData[chatId]) {
     console.log("Bot is stopping...");
@@ -191,32 +176,9 @@ bot.hears("Выключить уведомления", async (ctx) => {
     }
     delete chatsData[chatId];
 
-    // Create a custom keyboard with the "Turn On Bot" button
-    const replyMarkup = Markup.keyboard([
-      Markup.button.text("Включить уведомления"),
-    ]).resize();
-
-    ctx.reply("Уведомления деактивированы.", replyMarkup);
+    ctx.reply("Уведомления деактивированы.");
   } else {
     ctx.reply("Уведомления уже отлючены.");
-  }
-});
-
-bot.hears("Включить уведомления", (ctx) => {
-  const chatId = ctx.message.chat.id;
-  if (!chatsData[chatId]) {
-    chatsData[chatId] = new Set();
-    const intervalId = startCheckingForChanges(chatId);
-    chatsData[chatId].intervalId = intervalId;
-
-    // Create a custom keyboard with the "Turn Off Bot" button
-    const replyMarkup = Markup.keyboard([
-      Markup.button.text("Выключить уведомления"),
-    ]).resize();
-
-    ctx.reply("Уведомления в чате активированы.", replyMarkup);
-  } else {
-    ctx.reply("Уведомления уже активны в этом чате.");
   }
 });
 
@@ -228,3 +190,7 @@ bot
   .catch((error) => {
     console.log("Error launching the Telegram bot:", error);
   });
+
+// Enable graceful stop
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
