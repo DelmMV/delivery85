@@ -65,29 +65,51 @@ async function makeBackendRequestForOrder(id) {
 }
 
 function parseData(data) {
-  let parsedText = "<b>Состав заказа:</b>\n\n";
+  let parsedText = `<b>▼ Состав заказа:</b>\n\n`;
 
   data.forEach((item, index) => {
-    parsedText += `<b>+ ${item.ProductName}</b>\n`;
+    parsedText += `<b>${index + 1})${item.ProductName}</b>\n`;
+    if(item.Products) {
+      item.Products.forEach((item)=>{
+        parsedText += `   ○ ${item.ProductName}\n`
+      })
+    }
 
     if (item.Quantity > 1) {
-      parsedText += `<b>Количество:</b> ${item.Quantity}\n`;
+      parsedText += `   ○ <b>Количество: </b>‼️${item.Quantity}\n`;
     }
   });
 
   return parsedText;
 }
 
+function isTimeToTurnOffNotifications() {
+  const currentTime = new Date();
+  const currentHour = currentTime.getHours();
+  console.log(`${currentHour} 22:00, уведомеление выключены.`);
+  return currentHour >= 22;
+}
+
 const chatsData = {};
 
 function startCheckingForChanges(chatId) {
   return setInterval(async () => {
-    const currentTime = new Date();
-    const currentHour = currentTime.getUTCHours();
+    console.log(isTimeToTurnOffNotifications())
+    if (isTimeToTurnOffNotifications()) {
+      clearInterval(chatsData[chatId].intervalId);
+      delete chatsData[chatId].intervalId;
 
-    //     if (currentHour < 22) {
-    // return
-    //     }
+      // Create a custom keyboard with the "Turn On Bot" button
+      const replyMarkup = Markup.keyboard([
+        Markup.button.text("Включить уведомления"),
+      ]).resize();
+
+      await sendMessage(chatId, "Уведомления в чате деактивированы.", replyMarkup);
+
+      return; // Stop further execution of the interval
+    }
+  
+    const currentTime = new Date();
 
     try {
       const newResponse = await makeBackendRequest();
@@ -110,18 +132,20 @@ function startCheckingForChanges(chatId) {
           const newResponseOrder = await makeBackendRequestForOrder(
             newOrder.OrderId
           );
+          console.log(JSON.stringify(newResponseOrder))
+
           const markerColor = "org"; // Цвет маркера (org - оранжевый)
           const markerSize = "pm2"; // Размер маркера (pm2 - маленький)
           const mapLink = `https://yandex.com/maps/?ll=${newOrder.Longitude},${newOrder.Latitude}&z=12&pt=${newOrder.Longitude},${newOrder.Latitude},${markerColor}${markerSize}`;
           let parsedData = parseData(newResponseOrder);
           const message = `
             <b>Заказ #${newOrder.DeliveryNumber}</b>\n
-            <b>+ Адрес: </b> <a href="${mapLink}">${newOrder.Address}</a>\n
-            <b>+ Желаемое время: </b> ${getUserTime(
+            <b>▶ Адрес: </b> <a href="${mapLink}">${newOrder.Address}</a>\n
+            <b>▶ Желаемое время: </b> ${getUserTime(
               new Date(newOrder.WishingDate)
             )}\n
-            <b>+ Ближайшее: </b> ${newOrder.Nearest ? "Да" : "Нет"}\n
-            <b>+ Тел: </b> <a href="tel:+${newOrder.ClientPhone}">+${
+            <b>▶ Ближайшее: </b> ${newOrder.Nearest ? "Да" : "Нет"}\n
+            <b>▶ Телефон: </b> <a href="tel:+${newOrder.ClientPhone}">+${
             newOrder.ClientPhone
           }</a>\n
             <pre>${parsedData}</pre>
@@ -150,9 +174,9 @@ bot.command("start", (ctx) => {
       Markup.button.text("Выключить уведомления"),
     ]).resize();
 
-    ctx.reply("Уведомления в чате активированы.", replyMarkup);
+    ctx.reply("Уведомления активированы.", replyMarkup);
   } else {
-    ctx.reply("Уведомления уже активны в этом чате.");
+    ctx.reply("Уведомления уже активны.");
   }
 });
 
@@ -172,9 +196,9 @@ bot.hears("Выключить уведомления", async (ctx) => {
       Markup.button.text("Включить уведомления"),
     ]).resize();
 
-    ctx.reply("Уведомления в чате деактивированы.", replyMarkup);
+    ctx.reply("Уведомления деактивированы.", replyMarkup);
   } else {
-    ctx.reply("Уведомления уже отлючены в этом чате.");
+    ctx.reply("Уведомления уже отлючены.");
   }
 });
 
