@@ -86,7 +86,6 @@ function parseData(data) {
 function isTimeToTurnOffNotifications() {
   const currentTime = new Date();
   const currentHour = currentTime.getHours();
-  console.log(`${currentHour} 22:00, уведомеление выключены.`);
   return currentHour >= 22;
 }
 
@@ -95,6 +94,7 @@ const chatsData = {};
 function startCheckingForChanges(chatId) {
   return setInterval(async () => {
     if (isTimeToTurnOffNotifications()) {
+      console.log(`22:00, уведомеление выключены.`);
       clearInterval(chatsData[chatId].intervalId);
       delete chatsData[chatId].intervalId;
       await sendMessage(chatId, "Уведомления в чате деактивированы.");
@@ -159,7 +159,7 @@ bot.command("start", (ctx) => {
     chatsData[chatId] = new Set();
     const intervalId = startCheckingForChanges(chatId);
     chatsData[chatId].intervalId = intervalId;
-    ctx.reply("Уведомления активированы.");
+    ctx.reply("Уведомления активированы. Для отключения уведомлений наберите команду /off или выберите этот пункт в меню.");
   } else {
     ctx.reply("Уведомления уже активны.");
   }
@@ -176,7 +176,7 @@ bot.command("off", async (ctx) => {
     }
     delete chatsData[chatId];
 
-    ctx.reply("Уведомления деактивированы.");
+    ctx.reply("Уведомления деактивированы.Для включения уведомлений наберите команду /start или выберите этот пункт в меню.");
   } else {
     ctx.reply("Уведомления уже отлючены.");
   }
