@@ -96,7 +96,7 @@ function startCheckingForChanges(chatId) {
     if (isTimeToTurnOffNotifications()) {
       console.log(`22:00, уведомеление выключены.`);
       clearInterval(chatsData[chatId].intervalId);
-      delete chatsData[chatId].intervalId;
+      delete chatsData[chatId];
       await sendMessage(chatId, "Уведомления в чате деактивированы.");
       return; // Stop further execution of the interval
     }
