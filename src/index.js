@@ -65,7 +65,7 @@ async function makeBackendRequestForOrder(id) {
 }
 function wishesData(data) {
   let wishes = data.Wishes;
-  let wishesText = `▼ Пожелание:\n\n`
+  let wishesText = `▼ Пожелания к заказу:\n\n`
   if(wishes.length > 1) {
     wishes.forEach((item, index) => {
       wishesText += `${index + 1})${item.Name}\n`
