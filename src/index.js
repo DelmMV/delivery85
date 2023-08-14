@@ -63,7 +63,19 @@ async function makeBackendRequestForOrder(id) {
     return null;
   }
 }
-
+function wishesData(data) {
+  let wishes = data.Wishes;
+  let wishesText = `▼ Пожелание:\n\n`
+  if(wishes.length > 1) {
+    wishes.forEach((item, index) => {
+      wishesText += `${index + 1})${item.Name}\n`
+    })
+  }
+  else {
+  wishesText += `ツ Нету\n`;
+  }
+  return wishesText;
+}
 function parseData(data) {
   let parsedText = `<b>▼ Состав заказа:</b>\n\n`;
 
@@ -71,7 +83,7 @@ function parseData(data) {
     parsedText += `<b>${index + 1})${item.ProductName}</b>\n`;
     if(item.Products) {
       item.Products.forEach((item)=>{
-        parsedText += `   ○ ${item.ProductName}\n`
+        parsedText += `   ○ ${item.ProductName} ${item.Quantity}\n`
       })
     }
 
@@ -116,7 +128,7 @@ function startCheckingForChanges(chatId) {
       const processedOrderIds = chatsData[chatId] || new Set();
       const newOrders = newResponse.filter(
         (order) =>
-          order.Status === 12 && !processedOrderIds.has(order.DeliveryNumber)
+          order.Status === 7 && !processedOrderIds.has(order.DeliveryNumber)
       );
 
       if (newOrders.length > 0) {
@@ -129,6 +141,7 @@ function startCheckingForChanges(chatId) {
           const markerSize = "pm2"; // Размер маркера (pm2 - маленький)
           const mapLink = `https://yandex.com/maps/?ll=${newOrder.Longitude},${newOrder.Latitude}&z=12&pt=${newOrder.Longitude},${newOrder.Latitude},${markerColor}${markerSize}`;
           let parsedData = parseData(newResponseOrder);
+          let wishedData = wishesData(newOrder);
           const message = `
             <b>Заказ #${newOrder.DeliveryNumber}</b>\n
             <b>▶ Адрес: </b> <a href="${mapLink}">${newOrder.Address}</a>\n
@@ -139,6 +152,7 @@ function startCheckingForChanges(chatId) {
             <b>▶ Телефон: </b> <a href="tel:+${newOrder.ClientPhone}">+${
             newOrder.ClientPhone
           }</a>\n
+            <pre>${wishedData}</pre>\n
             <pre>${parsedData}</pre>
           `;
           await sendMessage(chatId, message);
