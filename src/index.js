@@ -1,12 +1,36 @@
-const { Telegraf, Markup } = require("telegraf");
+const { Telegraf } = require("telegraf");
 const axios = require("axios");
+const fs = require('fs');
+const express = require('express');
 require("dotenv").config();
+
+const savedToken = readTokenFromFile();
 
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const backendUrl = process.env.BACKEND_URL;
 const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
-const backendToken = process.env.BACKEND_TOKEN;
+const backendToken = '44EaA35uimY9p6p/hPLQC8XAoANzTRFY683c6vV/CjFoKOPDUFTO7HmBNCCYKvRY'
 const chatUpdatesInterval = 25000; // 25 seconds
+
+console.log(backendToken)
+
+
+
+// const app = express();
+// const PORT = 3001;
+//
+// app.get('/auth', (req, res) => {
+//   res.json(backendToken);
+// });
+//
+// app.get('/', (req, res) => {
+//   res.json(backendUrlOrders)
+// })
+//
+// // Слушаем выбранный порт
+// app.listen(PORT, () => {
+//   console.log(`Сервер запущен на порту ${PORT}`);
+// });
 
 function addLeadingZero(num) {
   return num < 10 ? "0" + num : num;
@@ -36,7 +60,7 @@ async function makeBackendRequest() {
     const config = {
       headers: {
         "Content-Type": "application/json",
-        token: backendToken,
+        token: savedToken,
       },
     };
     const response = await axios.get(backendUrl, config);
@@ -52,7 +76,7 @@ async function makeBackendRequestForOrder(id) {
     const config = {
       headers: {
         "Content-Type": "application/json",
-        token: backendToken,
+        token: savedToken,
       },
     };
     let fullbackendUrlOrder = `${backendUrlOrders}${id}`;
@@ -66,7 +90,7 @@ async function makeBackendRequestForOrder(id) {
 function wishesData(data) {
   let wishes = data.Wishes;
   let wishesText = `▼ Пожелания к заказу:\n\n`
-  if(wishes.length > 1) {
+  if(wishes.length > 0) {
     wishes.forEach((item, index) => {
       wishesText += `${index + 1})${item.Name}\n`
     })
@@ -76,6 +100,9 @@ function wishesData(data) {
   }
   return wishesText;
 }
+
+
+
 function parseData(data) {
   let parsedText = `<b>▼ Состав заказа:</b>\n\n`;
 
@@ -167,7 +194,36 @@ function startCheckingForChanges(chatId) {
   }, chatUpdatesInterval);
 }
 
-bot.command("start", (ctx) => {
+function readTokenFromFile() {
+  try {
+    const token = fs.readFileSync('token.txt', 'utf8');
+    return token.trim(); // Убираем лишние пробелы, символы перевода строки и т.д.
+  } catch (err) {
+    console.error('Ошибка при чтении токена из файла:', err);
+    return null;
+  }
+}
+bot.command('token', (ctx) => {
+  const input = ctx.message.text.split(' ');
+  if (input.length === 2) {
+    const token = input[1];
+    
+    // Сохраняем токен в файл (можно выбрать другой способ хранения)
+    fs.writeFile('token.txt', token, (err) => {
+      if (err) {
+        console.error('Ошибка при сохранении токена:', err);
+        ctx.reply('Произошла ошибка при сохранении токена');
+      } else {
+        console.log('Токен успешно сохранен');
+        ctx.reply('Токен успешно сохранен');
+      }
+    });
+  } else {
+    ctx.reply('Пожалуйста, введите команду в формате: /token "ваш_токен"');
+  }
+});
+
+bot.command("start", async (ctx) => {
   const chatId = ctx.message.chat.id;
   if (!chatsData[chatId]) {
     chatsData[chatId] = new Set();
@@ -178,6 +234,7 @@ bot.command("start", (ctx) => {
     ctx.reply("Уведомления уже активны.");
   }
 });
+
 
 bot.command("off", async (ctx) => {
   const chatId = ctx.message.chat.id;
