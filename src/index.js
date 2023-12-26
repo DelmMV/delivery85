@@ -1,36 +1,37 @@
 const { Telegraf } = require("telegraf");
 const axios = require("axios");
-const fs = require('fs');
-const express = require('express');
 require("dotenv").config();
-
-const savedToken = readTokenFromFile();
-
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+const userTokens = new Map();
 const backendUrl = process.env.BACKEND_URL;
 const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
-const backendToken = '44EaA35uimY9p6p/hPLQC8XAoANzTRFY683c6vV/CjFoKOPDUFTO7HmBNCCYKvRY'
-const chatUpdatesInterval = 25000; // 25 seconds
-
-console.log(backendToken)
+const chatUpdatesInterval = 25000;
 
 
 
-// const app = express();
-// const PORT = 3001;
-//
-// app.get('/auth', (req, res) => {
-//   res.json(backendToken);
-// });
-//
-// app.get('/', (req, res) => {
-//   res.json(backendUrlOrders)
-// })
-//
-// // Слушаем выбранный порт
-// app.listen(PORT, () => {
-//   console.log(`Сервер запущен на порту ${PORT}`);
-// });
+bot.command("token", (ctx) => {
+  const userId = ctx.from.id;
+  const userMessage = ctx.message.text;
+  const userToken = userMessage.split(" ")[1];
+  
+  if (userToken) {
+    // Сохраняем ключ для данного пользователя
+    userTokens.set(userId, userToken);
+    ctx.reply("API ключ успешно сохранен!");
+  } else {
+    ctx.reply("Используйте команду в формате: /token 'ваш_апи_ключ'");
+  }
+});
+
+bot.command("getApi", (ctx) => {
+  const userId = ctx.from.id;
+  const userToken = userTokens.get(userId);
+  if (userToken) {
+    ctx.reply(`Получаем данные с помощью API ключа: ${userToken}`);
+  } else {
+    ctx.reply("У вас не сохранен API ключ. Используйте /token 'ваш_апи_ключ', чтобы его сохранить.");
+  }
+});
 
 function addLeadingZero(num) {
   return num < 10 ? "0" + num : num;
@@ -55,12 +56,14 @@ async function sendMessage(chatId, message) {
   }
 }
 
-async function makeBackendRequest() {
+async function makeBackendRequest(userId) {
+  const userToken = userTokens.get(userId)
+  console.log(userToken)
   try {
     const config = {
       headers: {
         "Content-Type": "application/json",
-        token: savedToken,
+        token: userToken,
       },
     };
     const response = await axios.get(backendUrl, config);
@@ -71,12 +74,13 @@ async function makeBackendRequest() {
   }
 }
 
-async function makeBackendRequestForOrder(id) {
+async function makeBackendRequestForOrder(id, userId) {
+  const userToken = userTokens.get(userId)
   try {
     const config = {
       headers: {
         "Content-Type": "application/json",
-        token: savedToken,
+        token: userToken,
       },
     };
     let fullbackendUrlOrder = `${backendUrlOrders}${id}`;
@@ -100,8 +104,6 @@ function wishesData(data) {
   }
   return wishesText;
 }
-
-
 
 function parseData(data) {
   let parsedText = `<b>▼ Состав заказа:</b>\n\n`;
@@ -130,7 +132,7 @@ function isTimeToTurnOffNotifications() {
 
 const chatsData = {};
 
-function startCheckingForChanges(chatId) {
+function startCheckingForChanges(chatId, userId) {
   return setInterval(async () => {
     if (isTimeToTurnOffNotifications()) {
       console.log(`22:00, уведомеление выключены.`);
@@ -143,7 +145,7 @@ function startCheckingForChanges(chatId) {
     const currentTime = new Date();
 
     try {
-      const newResponse = await makeBackendRequest();
+      const newResponse = await makeBackendRequest(userId);
 
       if (!newResponse || newResponse.length === 0) {
         console.log(`Equal to 0 ${getUserTime(currentTime)}`);
@@ -161,7 +163,7 @@ function startCheckingForChanges(chatId) {
       if (newOrders.length > 0) {
         for (const newOrder of newOrders) {
           const newResponseOrder = await makeBackendRequestForOrder(
-            newOrder.OrderId
+            newOrder.OrderId, userId
           );
 
           const markerColor = "org"; // Цвет маркера (org - оранжевый)
@@ -193,41 +195,12 @@ function startCheckingForChanges(chatId) {
     }
   }, chatUpdatesInterval);
 }
-
-function readTokenFromFile() {
-  try {
-    const token = fs.readFileSync('token.txt', 'utf8');
-    return token.trim(); // Убираем лишние пробелы, символы перевода строки и т.д.
-  } catch (err) {
-    console.error('Ошибка при чтении токена из файла:', err);
-    return null;
-  }
-}
-bot.command('token', (ctx) => {
-  const input = ctx.message.text.split(' ');
-  if (input.length === 2) {
-    const token = input[1];
-    
-    // Сохраняем токен в файл (можно выбрать другой способ хранения)
-    fs.writeFile('token.txt', token, (err) => {
-      if (err) {
-        console.error('Ошибка при сохранении токена:', err);
-        ctx.reply('Произошла ошибка при сохранении токена');
-      } else {
-        console.log('Токен успешно сохранен');
-        ctx.reply('Токен успешно сохранен');
-      }
-    });
-  } else {
-    ctx.reply('Пожалуйста, введите команду в формате: /token "ваш_токен"');
-  }
-});
-
 bot.command("start", async (ctx) => {
   const chatId = ctx.message.chat.id;
+  const userId = ctx.from.id;
   if (!chatsData[chatId]) {
     chatsData[chatId] = new Set();
-    const intervalId = startCheckingForChanges(chatId);
+    const intervalId = startCheckingForChanges(chatId, userId);
     chatsData[chatId].intervalId = intervalId;
     ctx.reply("Уведомления активированы. Для отключения уведомлений наберите команду /off или выберите этот пункт в меню.");
   } else {
