@@ -6,7 +6,7 @@ const userTokens = new Map();
 const backendUrl = process.env.BACKEND_URL;
 const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
 const chatUpdatesInterval = 25000;
-
+const chatsData = {};
 
 
 bot.command("token", (ctx) => {
@@ -17,7 +17,7 @@ bot.command("token", (ctx) => {
   if (userToken) {
     // Сохраняем ключ для данного пользователя
     userTokens.set(userId, userToken);
-    ctx.reply("API ключ успешно сохранен!");
+    ctx.reply("Токен успешно сохранен!");
   } else {
     ctx.reply("Используйте команду в формате: /token 'ваш_апи_ключ'");
   }
@@ -29,9 +29,15 @@ bot.command("getApi", (ctx) => {
   if (userToken) {
     ctx.reply(`Получаем данные с помощью API ключа: ${userToken}`);
   } else {
-    ctx.reply("У вас не сохранен API ключ. Используйте /token 'ваш_апи_ключ', чтобы его сохранить.");
+    ctx.reply("У вас не сохранен токен. Используйте /token 'ваш_апи_ключ', чтобы его сохранить.");
   }
 });
+
+async function stopBot(userId, message) {
+  clearInterval(chatsData[userId].intervalId);
+  delete chatsData[userId];
+  await sendMessage(userId, message);
+}
 
 function addLeadingZero(num) {
   return num < 10 ? "0" + num : num;
@@ -57,8 +63,13 @@ async function sendMessage(chatId, message) {
 }
 
 async function makeBackendRequest(userId) {
-  const userToken = userTokens.get(userId)
-  console.log(userToken)
+  const userToken = userTokens.get(userId);
+  if (!userToken) {
+    console.log("Отсутствует токен пользователя.");
+    await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует.")
+    return null;
+  }
+  
   try {
     const config = {
       headers: {
@@ -69,13 +80,20 @@ async function makeBackendRequest(userId) {
     const response = await axios.get(backendUrl, config);
     return response.data;
   } catch (error) {
-    console.log("Error making backend request:", error);
+    console.log("Ошибка при выполнении запроса к бэкэнду:", error);
+    await stopBot(userId, "Ошибка: Не верный токен. Запросы к бэкэнду приостановлены.")
     return null;
   }
 }
 
 async function makeBackendRequestForOrder(id, userId) {
-  const userToken = userTokens.get(userId)
+  const userToken = userTokens.get(userId);
+  if (!userToken) {
+    console.log("Отсутствует токен пользователя.");
+    await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
+    return null;
+  }
+  
   try {
     const config = {
       headers: {
@@ -87,22 +105,9 @@ async function makeBackendRequestForOrder(id, userId) {
     const response = await axios.get(fullbackendUrlOrder, config);
     return response.data;
   } catch (error) {
-    console.log("Error making backend request:", error);
-    return null;
+    await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
+    console.log("Ошибка при выполнении запроса к бэкэнду:", error);
   }
-}
-function wishesData(data) {
-  let wishes = data.Wishes;
-  let wishesText = `▼ Пожелания к заказу:\n\n`
-  if(wishes.length > 0) {
-    wishes.forEach((item, index) => {
-      wishesText += `${index + 1})${item.Name}\n`
-    })
-  }
-  else {
-  wishesText += `ツ Нету\n`;
-  }
-  return wishesText;
 }
 
 function parseData(data) {
@@ -127,10 +132,10 @@ function parseData(data) {
 function isTimeToTurnOffNotifications() {
   const currentTime = new Date();
   const currentHour = currentTime.getHours();
-  return currentHour >= 22;
+  return currentHour >= 23;
 }
 
-const chatsData = {};
+
 
 function startCheckingForChanges(chatId, userId) {
   return setInterval(async () => {
