@@ -8,14 +8,12 @@ const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
 const chatUpdatesInterval = 25000;
 const chatsData = {};
 
-
 bot.command("token", (ctx) => {
   const userId = ctx.from.id;
   const userMessage = ctx.message.text;
   const userToken = userMessage.split(" ")[1];
   
   if (userToken) {
-    // Сохраняем ключ для данного пользователя
     userTokens.set(userId, userToken);
     ctx.reply("Токен успешно сохранен!");
   } else {
@@ -88,12 +86,7 @@ async function makeBackendRequest(userId) {
 
 async function makeBackendRequestForOrder(id, userId) {
   const userToken = userTokens.get(userId);
-  if (!userToken) {
-    console.log("Отсутствует токен пользователя.");
-    await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
-    return null;
-  }
-  
+
   try {
     const config = {
       headers: {
@@ -108,6 +101,20 @@ async function makeBackendRequestForOrder(id, userId) {
     await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
     console.log("Ошибка при выполнении запроса к бэкэнду:", error);
   }
+}
+
+function wishesData(data) {
+  let wishes = data.Wishes;
+  let wishesText = `▼ Пожелания к заказу:\n\n`
+  if(wishes.length > 0) {
+    wishes.forEach((item, index) => {
+      wishesText += `${index + 1})${item.Name}\n`
+    })
+  }
+  else {
+  wishesText += `ツ Нету\n`;
+  }
+  return wishesText;
 }
 
 function parseData(data) {
@@ -134,8 +141,6 @@ function isTimeToTurnOffNotifications() {
   const currentHour = currentTime.getHours();
   return currentHour >= 23;
 }
-
-
 
 function startCheckingForChanges(chatId, userId) {
   return setInterval(async () => {
@@ -203,6 +208,8 @@ function startCheckingForChanges(chatId, userId) {
 bot.command("start", async (ctx) => {
   const chatId = ctx.message.chat.id;
   const userId = ctx.from.id;
+  const userToken = userTokens.get(userId);
+
   if (!chatsData[chatId]) {
     chatsData[chatId] = new Set();
     const intervalId = startCheckingForChanges(chatId, userId);
@@ -210,6 +217,10 @@ bot.command("start", async (ctx) => {
     ctx.reply("Уведомления активированы. Для отключения уведомлений наберите команду /off или выберите этот пункт в меню.");
   } else {
     ctx.reply("Уведомления уже активны.");
+  }
+  if(!userToken) {
+  //await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
+  return null;
   }
 });
 
@@ -240,6 +251,6 @@ bot
     console.log("Error launching the Telegram bot:", error);
   });
 
-// Enable graceful stop
+// Enable graceful stop!
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
