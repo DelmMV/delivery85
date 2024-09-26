@@ -214,7 +214,7 @@ bot.command("start", async (ctx) => {
     chatsData[chatId] = new Set();
     const intervalId = startCheckingForChanges(chatId, userId);
     chatsData[chatId].intervalId = intervalId;
-    ctx.reply("Уведомления активированы. Для отключения уведомлений наберите команду /off или выберите этот пункт в меню.");
+    ctx.reply("Уведомления активированы. Для отключения уведомлений наберите команду /off или выберите этот пункт в меню. Если вы перешли с приложения и требует токен, то тогда токен находится у вас в буфере обмена, просто вставьте его в чат с ботом.");
   } else {
     ctx.reply("Уведомления уже активны.");
   }
