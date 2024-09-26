@@ -4,8 +4,8 @@
   "description": "Telegram bot for notifications of new orders",
   "main": "index.js",
   "scripts": {
-    "start": "node ./src/index.js",
-    "dev": "nodemon ./src/index.js"
+    "start": "node delivery85.js",
+    "dev": "nodemon delivery85.js"
   },
   "author": "",
   "license": "ISC",
