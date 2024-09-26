@@ -16,6 +16,16 @@ bot.command("token", (ctx) => {
   if (userToken) {
     userTokens.set(userId, userToken);
     ctx.reply("Токен успешно сохранен!");
+
+    const chatId = ctx.message.chat.id;
+    if (!chatsData[chatId]) {
+      chatsData[chatId] = new Set();
+      const intervalId = startCheckingForChanges(chatId, userId);
+      chatsData[chatId].intervalId = intervalId;
+      ctx.reply("Включены уведомления. Чтобы отключить уведомления, введите команду /off или выберите этот пункт в меню.");
+    } else {
+      ctx.reply("Уведомления уже активны.");
+    }
   } else {
     ctx.reply("Используйте команду в формате: /token 'ваш_апи_ключ'");
   }
@@ -214,7 +224,7 @@ bot.command("start", async (ctx) => {
     chatsData[chatId] = new Set();
     const intervalId = startCheckingForChanges(chatId, userId);
     chatsData[chatId].intervalId = intervalId;
-    ctx.reply("Уведомления активированы. Для отключения уведомлений наберите команду /off или выберите этот пункт в меню. Если вы перешли с приложения и требует токен, то тогда токен находится у вас в буфере обмена, просто вставьте его в чат с ботом.");
+    ctx.reply("Включены уведомления. Чтобы отключить уведомления, введите команду /off или выберите этот пункт в меню. Если вы перешли с приложения и требуется ввести токен доступа, то тогда токен находится у вас в буфере обмена, просто вставьте его в чат с ботом.");
   } else {
     ctx.reply("Уведомления уже активны.");
   }
@@ -236,7 +246,7 @@ bot.command("off", async (ctx) => {
     }
     delete chatsData[chatId];
 
-    ctx.reply("Уведомления деактивированы.Для включения уведомлений наберите команду /start или выберите этот пункт в меню.");
+    ctx.reply("Уведомления деактивированы.Для включения уведомлений наберите команду /start или выберите это�� пункт в меню.");
   } else {
     ctx.reply("Уведомления уже отлючены.");
   }
