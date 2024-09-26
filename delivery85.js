@@ -139,7 +139,7 @@ function parseData(data) {
 function isTimeToTurnOffNotifications() {
   const currentTime = new Date();
   const currentHour = currentTime.getHours();
-  return currentHour >= 23;
+  return currentHour >= 22;
 }
 
 function startCheckingForChanges(chatId, userId) {
