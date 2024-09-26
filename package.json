@@ -2,7 +2,7 @@
   "name": "delivery85",
   "version": "0.0.1",
   "description": "Telegram bot for notifications of new orders",
-  "main": "index.js",
+  "main": "delivery85.js",
   "scripts": {
     "start": "node delivery85.js",
     "dev": "nodemon delivery85.js"
