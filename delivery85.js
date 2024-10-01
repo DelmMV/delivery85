@@ -1,20 +1,68 @@
-const { Telegraf } = require("telegraf");
+const { Telegraf, session } = require("telegraf");
 const axios = require("axios");
 require("dotenv").config();
+const { MongoClient } = require('mongodb');
+
+const mongoClient = new MongoClient(process.env.MONGODB_URI);
+
+let db;
+let usersCollection;
+
+mongoClient.connect()
+  .then(() => {
+    console.log("Успешное подключение к MongoDB");
+    db = mongoClient.db('delivery85'); // Замените на имя вашей базы данных
+    usersCollection = db.collection('users');
+  })
+  .catch(error => {
+    console.error("Ошибка подключения к MongoDB:", error);
+  });
+
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
-const userTokens = new Map();
+
+// Middleware для сессий
+bot.use(session());
+
+// Middleware для сохранения сессий в MongoDB
+bot.use(async (ctx, next) => {
+  if (!ctx.session) {
+    const user = await usersCollection.findOne({ userId: ctx.from.id });
+    ctx.session = user ? user.session || {} : {};
+  }
+  await next();
+  await usersCollection.updateOne(
+    { userId: ctx.from.id },
+    { $set: { session: ctx.session } },
+    { upsert: true }
+  );
+});
+
 const backendUrl = process.env.BACKEND_URL;
 const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
-const chatUpdatesInterval = 25000;
+const chatUpdatesInterval = 30000;
 const chatsData = {};
 
-bot.command("token", (ctx) => {
+const currentTime = new Date();
+
+bot.command("token", async (ctx) => {
   const userId = ctx.from.id;
   const userMessage = ctx.message.text;
   const userToken = userMessage.split(" ")[1];
   
   if (userToken) {
-    userTokens.set(userId, userToken);
+    // Сохранение токена в MongoDB
+    await usersCollection.updateOne(
+      { userId: userId },
+      { 
+        $set: { 
+          userId: userId, 
+          token: userToken,
+          session: ctx.session 
+        }
+      },
+      { upsert: true }
+    );
+    
     ctx.reply("Токен успешно сохранен!");
 
     const chatId = ctx.message.chat.id;
@@ -23,9 +71,7 @@ bot.command("token", (ctx) => {
       const intervalId = startCheckingForChanges(chatId, userId);
       chatsData[chatId].intervalId = intervalId;
       ctx.reply("Включены уведомления. Чтобы отключить уведомления, введите команду /off или выберите этот пункт в меню.");
-    } else {
-      ctx.reply("Уведомления уже активны.");
-    }
+    } 
   } else {
     ctx.reply("Используйте команду в формате: /token 'ваш_апи_ключ'");
   }
@@ -71,7 +117,10 @@ async function sendMessage(chatId, message) {
 }
 
 async function makeBackendRequest(userId) {
-  const userToken = userTokens.get(userId);
+  // Получение токена из MongoDB
+  const user = await usersCollection.findOne({ userId: userId });
+  const userToken = user ? user.token : null;
+
   if (!userToken) {
     console.log("Отсутствует токен пользователя.");
     await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует.")
@@ -89,13 +138,19 @@ async function makeBackendRequest(userId) {
     return response.data;
   } catch (error) {
     console.log("Ошибка при выполнении запроса к бэкэнду:", error);
-    await stopBot(userId, "Ошибка: Не верный токен. Запросы к бэкэнду приостановлены.")
+    await stopBot(userId, `Ошибка: ${error.message}`)
     return null;
   }
 }
 
 async function makeBackendRequestForOrder(id, userId) {
-  const userToken = userTokens.get(userId);
+  const user = await usersCollection.findOne({ userId: userId });
+  const userToken = user ? user.token : null;
+
+  if (!userToken) {
+    await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
+    return null;
+  }
 
   try {
     const config = {
@@ -108,8 +163,9 @@ async function makeBackendRequestForOrder(id, userId) {
     const response = await axios.get(fullbackendUrlOrder, config);
     return response.data;
   } catch (error) {
-    await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
     console.log("Ошибка при выполнении запроса к бэкэнду:", error);
+    await stopBot(userId, `Ошибка: ${error.message}`)
+    return null;
   }
 }
 
@@ -159,21 +215,14 @@ function startCheckingForChanges(chatId, userId) {
       clearInterval(chatsData[chatId].intervalId);
       delete chatsData[chatId];
       await sendMessage(chatId, "Уведомления в чате деактивированы.");
-      return; // Stop further execution of the interval
+      return;
     }
-  
-    const currentTime = new Date();
-
     try {
       const newResponse = await makeBackendRequest(userId);
 
       if (!newResponse || newResponse.length === 0) {
-        console.log(`Equal to 0 ${getUserTime(currentTime)}`);
         return;
       }
-
-      console.log(`Not equal to 0 || ${getUserTime(currentTime)}`);
-
       const processedOrderIds = chatsData[chatId] || new Set();
       const newOrders = newResponse.filter(
         (order) =>
@@ -186,7 +235,7 @@ function startCheckingForChanges(chatId, userId) {
             newOrder.OrderId, userId
           );
 
-          const markerColor = "org"; // Цвет маркера (org - оранжевый)
+          const markerColor = "org"; // Цвет маркер (org - оранжевый)
           const markerSize = "pm2"; // Размер маркера (pm2 - маленький)
           const mapLink = `https://yandex.com/maps/?ll=${newOrder.Longitude},${newOrder.Latitude}&z=12&pt=${newOrder.Longitude},${newOrder.Latitude},${markerColor}${markerSize}`;
           let parsedData = parseData(newResponseOrder);
@@ -215,22 +264,27 @@ function startCheckingForChanges(chatId, userId) {
     }
   }, chatUpdatesInterval);
 }
+
 bot.command("start", async (ctx) => {
   const chatId = ctx.message.chat.id;
   const userId = ctx.from.id;
-  const userToken = userTokens.get(userId);
+
+  // Проверяем, есть ли у пользователя сохраненный токен
+  const user = await usersCollection.findOne({ userId: userId });
+  const userToken = user ? user.token : null;
 
   if (!chatsData[chatId]) {
     chatsData[chatId] = new Set();
     const intervalId = startCheckingForChanges(chatId, userId);
     chatsData[chatId].intervalId = intervalId;
     ctx.reply("Уведомления включены. Чтобы их отключить, введите команду /off или выберите пункт в меню. Если вы перешли из приложения и вам нужно ввести токен доступа, он находится в буфере обмена. Просто вставьте его в чат с ботом." );
+    console.log(`Уведомления включены. ${getUserTime(currentTime)}`);
   } else {
     ctx.reply("Уведомления уже активны.");
   }
+  
   if(!userToken) {
-  //await stopBot(userId, "Ошибка: Ваш токен недействителен или отсутствует. Запросы к бэкэнду приостановлены.")
-  return null;
+    ctx.reply("У вас нет сохраненного токена. Пожалуйста, используйте команду /token для установки вашего токена.");
   }
 });
 
@@ -247,9 +301,22 @@ bot.command("off", async (ctx) => {
     delete chatsData[chatId];
 
     ctx.reply("Уведомления деактивированы.Для включения уведомлений наберите команду /start или выберите этот пункт в меню.");
+    console.log(`Уведомления деактивированы. ${getUserTime(currentTime)}`);
   } else {
-    ctx.reply("Уведомления уже отлючены.");
+    ctx.reply(`Уведомления уже отлючены.`);
   }
+});
+
+bot.command("help", (ctx) => {
+  const helpMessage = `
+Список доступных команд:
+
+/token [ваш_апи_ключ] - Эта команда позволяет пользователю сохранить свой API-ключ. После сохранения токена, бот автоматически включает уведомления.
+/start - Включает уведомления и проверяет наличие сохраненного токена.
+/off - Отключает уведомления.
+  `;
+  
+  ctx.reply(helpMessage);
 });
 
 bot
@@ -264,3 +331,9 @@ bot
 // Enable graceful stop!
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// Обработка закрытия соединения с MongoDB при завершении работы бота
+process.on('SIGINT', async () => {
+  await mongoClient.close();
+  process.exit();
+});
