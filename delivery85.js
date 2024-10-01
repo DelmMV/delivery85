@@ -11,7 +11,7 @@ let usersCollection;
 mongoClient.connect()
   .then(() => {
     console.log("Успешное подключение к MongoDB");
-    db = mongoClient.db('delivery85'); // Замените на имя вашей базы данных
+    db = mongoClient.db('delivery85');
     usersCollection = db.collection('users');
   })
   .catch(error => {
@@ -23,18 +23,23 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 // Middleware для сессий
 bot.use(session());
 
-// Middleware для сохранения сессий в MongoDB
+// Middleware для работы с пользовательскими данными
 bot.use(async (ctx, next) => {
-  if (!ctx.session) {
-    const user = await usersCollection.findOne({ userId: ctx.from.id });
-    ctx.session = user ? user.session || {} : {};
+  if (ctx && ctx.from) {
+    if (!ctx.session) {
+      ctx.session = {};
+    }
+    if (!ctx.session.userId) {
+      const user = await usersCollection.findOne({ userId: ctx.from.id });
+      if (user) {
+        ctx.session.userId = user.userId;
+        ctx.session.token = user.token;
+      } else {
+        ctx.session.userId = ctx.from.id;
+      }
+    }
   }
   await next();
-  await usersCollection.updateOne(
-    { userId: ctx.from.id },
-    { $set: { session: ctx.session } },
-    { upsert: true }
-  );
 });
 
 const backendUrl = process.env.BACKEND_URL;
@@ -45,35 +50,41 @@ const chatsData = {};
 const currentTime = new Date();
 
 bot.command("token", async (ctx) => {
-  const userId = ctx.from.id;
-  const userMessage = ctx.message.text;
-  const userToken = userMessage.split(" ")[1];
-  
-  if (userToken) {
-    // Сохранение токена в MongoDB
-    await usersCollection.updateOne(
-      { userId: userId },
-      { 
-        $set: { 
-          userId: userId, 
-          token: userToken,
-          session: ctx.session 
-        }
-      },
-      { upsert: true }
-    );
+  if (ctx && ctx.from) {
+    const userId = ctx.from.id;
+    const userMessage = ctx.message.text;
+    const userToken = userMessage.split(" ")[1];
     
-    ctx.reply("Токен успешно сохранен!");
+    if (userToken) {
+      // Сохранение токена в MongoDB
+      await usersCollection.updateOne(
+        { userId: userId },
+        { 
+          $set: { 
+            userId: userId, 
+            token: userToken
+          }
+        },
+        { upsert: true }
+      );
+      
+      // Обновление токена в сессии
+      ctx.session.token = userToken;
+      
+      ctx.reply("Токен успешно сохранен!");
 
-    const chatId = ctx.message.chat.id;
-    if (!chatsData[chatId]) {
-      chatsData[chatId] = new Set();
-      const intervalId = startCheckingForChanges(chatId, userId);
-      chatsData[chatId].intervalId = intervalId;
-      ctx.reply("Включены уведомления. Чтобы отключить уведомления, введите команду /off или выберите этот пункт в меню.");
-    } 
+      const chatId = ctx.message.chat.id;
+      if (!chatsData[chatId]) {
+        chatsData[chatId] = new Set();
+        const intervalId = startCheckingForChanges(chatId, userId);
+        chatsData[chatId].intervalId = intervalId;
+        ctx.reply("Включены уведомления. Чтобы отключить уведомления, введите команду /off или выберите этот пункт в меню.");
+      } 
+    } else {
+      ctx.reply("Используйте команду в формате: /token 'ваш_апи_ключ'");
+    }
   } else {
-    ctx.reply("Используйте команду в формате: /token 'ваш_апи_ключ'");
+    console.error("Ошибка: ctx или ctx.from не определены");
   }
 });
 
@@ -117,7 +128,6 @@ async function sendMessage(chatId, message) {
 }
 
 async function makeBackendRequest(userId) {
-  // Получение токена из MongoDB
   const user = await usersCollection.findOne({ userId: userId });
   const userToken = user ? user.token : null;
 
@@ -135,6 +145,7 @@ async function makeBackendRequest(userId) {
       },
     };
     const response = await axios.get(backendUrl, config);
+    console.log(user)
     return response.data;
   } catch (error) {
     console.log("Ошибка при выполнении запроса к бэкэнду:", error);
