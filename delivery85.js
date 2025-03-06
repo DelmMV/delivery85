@@ -44,7 +44,7 @@ bot.use(async (ctx, next) => {
 
 const backendUrl = process.env.BACKEND_URL;
 const backendUrlOrders = process.env.BACKEND_URL_ORDERS;
-const chatUpdatesInterval = 30000;
+const chatUpdatesInterval = 120000;
 const chatsData = {};
 
 const currentTime = new Date();
@@ -149,7 +149,6 @@ async function makeBackendRequest(userId) {
     return response.data;
   } catch (error) {
     console.log("Ошибка при выполнении запроса к бэкэнду:", error);
-    await stopBot(userId, `Ошибка: ${error.message}`)
     return null;
   }
 }
@@ -175,7 +174,6 @@ async function makeBackendRequestForOrder(id, userId) {
     return response.data;
   } catch (error) {
     console.log("Ошибка при выполнении запроса к бэкэнду:", error);
-    await stopBot(userId, `Ошибка: ${error.message}`)
     return null;
   }
 }
